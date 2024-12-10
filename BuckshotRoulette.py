@@ -1,6 +1,5 @@
 """
-
-Cross Scrabble
+Buckshot Roulette
 By Ariel Zepezauer (arielzepezauer@gmail.com)
 Created: 12/6/24
 Repository at:
@@ -13,7 +12,12 @@ TODO list:
       for adaptability in moving beyond a basic terminal implementation
     - Eventually turn this into a discord bot
 """
+import random
 from random import *
+import sys
+import time
+import os
+
 
 class BSRPlayer:
     """
@@ -36,6 +40,7 @@ class BSRPlayer:
         self.hp = self.max_hp
         self.number = None
         self.wins = 0
+        self.aliases = self.generate_aliases()
 
     def set_new_max_hp(self, value: int):
         self.max_hp = value
@@ -44,16 +49,34 @@ class BSRPlayer:
     def generate_items(self):
         pass
 
+    def generate_aliases(self):
+        aliases = [
+            f"{self.name}",
+            f"{self.number}",
+            f"p{self.number}",
+            f"player{self.number}",
+        ]
+        return [alias.casefold() for alias in aliases]
+
 class BSRoulette:
     def __init__(self, players: list[BSRPlayer]=(BSRPlayer(),BSRPlayer(human=False))):
         # Setup Players
         self.players = players
         self.living_players = self.players
+        # Assign player numbers and aliases
+        for i, player in enumerate(self.players):
+            player.number = i + 1
+        [player.generate_aliases() for player in self.players]
+        self.player_dict = {alias: player for player in self.players for alias in player.aliases}
         # Set placeholders
         self.magazine = []
         # Set starting values
         self.active_player = 0
         self.round = 0
+        self.sawed_off = False
+        self.shotgun_damage = 1
+        self.sawed_off_bonus = 1
+        self.skip_embellishments = False
 
     def begin(self):
         # Reset starting values
@@ -61,14 +84,19 @@ class BSRoulette:
         self.round = 0
         # Play for 3 rounds
         while self.round < 3:
+            # The first player of the next round is the one with the least wins, with ties broken by chance
+            # It annoys me that I can't reduce this to one line, I feel like there has to be a way
+            temp = [player.wins for player in self.players]
+            shuffle(temp)
+            self.active_player = min(temp)
             self.begin_round()
-        
+
     def begin_round(self):
         # Reset player hp
         new_max_hp = randint(3,5)
         [player.set_new_max_hp(new_max_hp) for player in self.players]
         self.living_players = self.players
-        # Advance the round counter
+        # Advance the round counter (this might be better to have one level up)
         self.round += 1
         print(f"------------------------\n"
               f"Begin round {"".join([f"I" for _ in range(self.round)])}\n"
@@ -76,6 +104,7 @@ class BSRoulette:
         # And begin cycling through magazines
         while self.begin_magazine():
             pass
+
 
     def begin_magazine(self) -> bool:
         # Refresh Players' items
@@ -91,6 +120,9 @@ class BSRoulette:
             player = self.living_players[self.active_player]
             if self.get_move(player): # Moves return True if they advance the turn counter
                 self.active_player += 1
+                # NOTE: This line may create a bug where a player hitting themselves with a blank
+                # at the end of the magazine does not correctly carry over to the next one
+                self.active_player %= len(self.living_players)
             if len(self.living_players) == 1:
                 self.living_players[0].wins += 1
                 return False # Return False to end the round
@@ -117,9 +149,10 @@ class BSRoulette:
         UI loop for selecting a move for a human player
         moves return True or False in order to determine when there turn is over
         """
+        print(f"Player {self.active_player + 1}{f" ({player.name})" if player.name else ""}, "
+              f"Pick Your Move (type 'help' for movelist):")
         while True:
-            move = input(f"Player {self.active_player + 1}{f" ({player.name})" if player.name else ""}, "
-                         f"Pick Your Move (type 'help' for movelist):\n")
+            move = input()
             move = move.strip().casefold().split(" ")
             arguments = move[1::] if len(move) > 1 else None
             move = move[0]
@@ -131,12 +164,76 @@ class BSRoulette:
 
     # <editor-fold: commands>
     SHOOT_ALIASES = ('shoot', 's', 'kill')
-    def shoot(self, player) -> bool:
-        print(f"{self}")
+    SELF_ALIASES = ('me', 'self', 'myself', 's')
+    def shoot(self, shooter) -> bool:
+        # <editor-fold: Flair>
+        time.sleep(0.25) if not self.skip_embellishments else None
+        for char in "P I C K. Y O U R. T A R G E T.":
+            print(char,end='')
+            if char not in (' ', '.'):
+                time.sleep(randint(1, 3) * 0.1) if not self.skip_embellishments else None
+        print()
+        time.sleep(0.6) if not self.skip_embellishments else None
+        # </editor-fold>
+        # Reassemble player dictionary to be safe
+        [player.generate_aliases() for player in self.players]
+        self.player_dict = {alias: player for player in self.players for alias in player.aliases}
+        # Enter a UI loop to pick a target
+        while True:
+            target = input("W H O ?\n").strip().casefold()
+            if target in BSRoulette.SELF_ALIASES + tuple(shooter.aliases):
+                return self.fire_shotgun(shooter)
+            if target not in self.player_dict.keys():
+                continue
+            target = self.player_dict[target]
+            if target in self.living_players:
+                return self.fire_shotgun(target)
+            else:
+                print(f"{target} is already dead.")
+
+    def fire_shotgun(self, target: BSRPlayer) -> bool:
+        # <editor-fold: Flair>
+        for _ in range(randint(3,5)):
+            print(".",end="")
+            time.sleep(randint(3,6) * 0.1) if not self.skip_embellishments else None
+        print()
+        time.sleep(randint(4, 8) * 0.1) if not self.skip_embellishments else None
+        # </editor-fold>
+        if self.magazine.pop():
+            print("BANG.") # TODO: Make this more dramatic
+            time.sleep(0.1) if not self.skip_embellishments else None
+            self.hit(target)
+            # <editor-fold: Flair>
+            time.sleep(1) if not self.skip_embellishments else None
+            print()
+            # Source: https://stackoverflow.com/a/2084628
+            # os.system('cls' if os.name == 'nt' else 'clear')
+            # </editor-fold>
+            return True
+        else:
+            print("click.")
+            time.sleep(1) if not self.skip_embellishments else None
+            print()
+        return False
+
+    def hit(self, target):
+        damage = self.shotgun_damage
+        if self.sawed_off:
+            self.sawed_off = False
+            damage += self.sawed_off_bonus
+        target.hp -= damage
+        if target.hp <= 0:
+            self.kill_player(target)
+
+    def kill_player(self, player):
+        # if player in self.living_players[self.active_player: self.active_player + 1]:
+        # TODO: Add logic to fix bugs related to the turn order when a player dies
+        self.living_players.remove(player)
+
 
     HELP_ALIASES = ('help', 'h', '?')
-    MOVE_LIST = (move[0] for move in (HELP_ALIASES,
-                                      SHOOT_ALIASES,))
+    UNABRIDGED_MOVE_LIST = (HELP_ALIASES, SHOOT_ALIASES)
+    MOVE_LIST = (move[0] for move in UNABRIDGED_MOVE_LIST)
     @staticmethod
     def help(arguments:list[str]|str=None):
         """Help Command: lists information about other commands"""
@@ -160,6 +257,7 @@ class BSRoulette:
     # </editor-fold>
 def main():
     game = BSRoulette()
+    # game.skip_embellishments = True
     game.begin()
 
 if __name__ == "__main__":
