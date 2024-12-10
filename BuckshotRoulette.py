@@ -17,6 +17,7 @@ from random import *
 import sys
 import time
 import os
+import copy
 
 
 class BSRPlayer:
@@ -41,6 +42,7 @@ class BSRPlayer:
         self.number = None
         self.wins = 0
         self.aliases = self.generate_aliases()
+        self.jammed = False
 
     def set_new_max_hp(self, value: int):
         self.max_hp = value
@@ -50,18 +52,26 @@ class BSRPlayer:
         pass
 
     def generate_aliases(self):
-        aliases = [
-            f"{self.name}",
-            f"{self.number}",
-            f"p{self.number}",
-            f"player{self.number}",
+        aliases = [ # TODO: make this cleaner, account for bugs with custom names
+            f"{self.name}" if self.name else None,
+            f"{self.number}" if self.number else None,
+            f"p{self.number}" if self.number else None,
+            f"player{self.number}" if self.number else None,
         ]
-        return [alias.casefold() for alias in aliases]
+        self.aliases = [alias.casefold() for alias in aliases if alias]
+        return self.aliases
+
+    def __str__(self):
+        return (f"Player {self.number}{f" ({self.name})" if self.name else ""} "
+                f"[{"".join(["↯" if not self.jammed else " " for _ in range(self.hp)]) +
+                    "".join([" " for _ in range(self.max_hp - self.hp)])}]")
+
+
 
 class BSRoulette:
     def __init__(self, players: list[BSRPlayer]=(BSRPlayer(),BSRPlayer(human=False))):
         # Setup Players
-        self.players = players
+        self.players = list(players)
         self.living_players = self.players
         # Assign player numbers and aliases
         for i, player in enumerate(self.players):
@@ -78,18 +88,25 @@ class BSRoulette:
         self.sawed_off_bonus = 1
         self.skip_embellishments = False
 
+    def add_player(self):
+        raise NotImplemented
+
     def begin(self):
         # Reset starting values
         self.active_player = 0
         self.round = 0
         # Play for 3 rounds
         while self.round < 3:
-            # The first player of the next round is the one with the least wins, with ties broken by chance
-            # It annoys me that I can't reduce this to one line, I feel like there has to be a way
-            temp = [player.wins for player in self.players]
-            shuffle(temp)
-            self.active_player = min(temp)
+            # First Pick the first player (-1 to account for off by one errors with 0 index)
+            self.active_player = self.random_player_least_wins().number - 1
+            # Then begin the round
             self.begin_round()
+
+    def random_player_least_wins(self) -> BSRPlayer:
+        # (The first player of the next round is the one with the least wins, with ties broken by chance)
+        players = copy.deepcopy(self.players)
+        shuffle(players)
+        return min(players, key=lambda x:x.wins)
 
     def begin_round(self):
         # Reset player hp
@@ -105,7 +122,6 @@ class BSRoulette:
         while self.begin_magazine():
             pass
 
-
     def begin_magazine(self) -> bool:
         # Refresh Players' items
         [player.generate_items() for player in self.players]
@@ -115,6 +131,7 @@ class BSRoulette:
         print(", ".join([f"Live" if shell else f"Blank" for shell in self.magazine]))
         # Shuffle it
         shuffle(self.magazine)
+        print(self.active_player)
         # Then, begin the game
         while self.magazine:
             player = self.living_players[self.active_player]
@@ -160,9 +177,22 @@ class BSRoulette:
                 print(self.help(arguments))
             elif move in self.SHOOT_ALIASES:
                 return self.shoot(player)
+            elif move in self.LISTPLAYERS_ALIASES:
+                print(self.list_players())
+            else:
+                print("Invalid Move (type 'help' for movelist:")
 
+    def update_player_aliases(self):
+        for player in self.players:
+            player.generate_aliases()
+        self.player_dict = {alias: player for player in self.players for alias in player.aliases}
 
+    # --------------------------------------------------------------
     # <editor-fold: commands>
+    # ALL NEW COMMANDS MUST HAVE:
+    # - AN ALIASES CONSTANT WHICH HAS BEEN ADDED TO THE MOVE LIST ABOVE 'help()'
+    # - AN ELIF STATEMENT IN 'move_ui()'
+    # <editor-fold: shoot() and shoot() helper functions>
     SHOOT_ALIASES = ('shoot', 's', 'kill')
     SELF_ALIASES = ('me', 'self', 'myself', 's')
     def shoot(self, shooter) -> bool:
@@ -175,9 +205,8 @@ class BSRoulette:
         print()
         time.sleep(0.6) if not self.skip_embellishments else None
         # </editor-fold>
-        # Reassemble player dictionary to be safe
-        [player.generate_aliases() for player in self.players]
-        self.player_dict = {alias: player for player in self.players for alias in player.aliases}
+        # Update player aliases to be safe
+        self.update_player_aliases()
         # Enter a UI loop to pick a target
         while True:
             target = input("W H O ?\n").strip().casefold()
@@ -229,10 +258,19 @@ class BSRoulette:
         # if player in self.living_players[self.active_player: self.active_player + 1]:
         # TODO: Add logic to fix bugs related to the turn order when a player dies
         self.living_players.remove(player)
+    # </editor-fold>
 
+    LISTPLAYERS_ALIASES = ('listplayers', 'ls','lp', 'l','players','list')
+    def list_players(self) -> str:
+        # Update player aliases to be safe
+        self.update_player_aliases()
+        return "\n".join([f"{player}"
+                          f" - Aliases: {", ".join([f"'{alias}'" for alias in player.aliases])}"
+                          for player in self.living_players])
 
+    # <editor-fold: help() and help constants>
     HELP_ALIASES = ('help', 'h', '?')
-    UNABRIDGED_MOVE_LIST = (HELP_ALIASES, SHOOT_ALIASES)
+    UNABRIDGED_MOVE_LIST = (HELP_ALIASES, SHOOT_ALIASES, LISTPLAYERS_ALIASES)
     MOVE_LIST = (move[0] for move in UNABRIDGED_MOVE_LIST)
     @staticmethod
     def help(arguments:list[str]|str=None):
@@ -254,10 +292,13 @@ class BSRoulette:
                     f"Aliases: {BSRoulette.SHOOT_ALIASES}"
                     "Picks up the shotgun, once it has been picked up you must pick a target.\n"
                     "Targets can be 'self' or one of the players shown in 'listplayers'")
-    # </editor-fold>
+    # </editor-fold: help>
+    # </editor-fold: commands>
+    # ------------------------------------------------
+
 def main():
-    game = BSRoulette()
-    # game.skip_embellishments = True
+    game = BSRoulette([BSRPlayer(),BSRPlayer()])
+    game.skip_embellishments = True
     game.begin()
 
 if __name__ == "__main__":
