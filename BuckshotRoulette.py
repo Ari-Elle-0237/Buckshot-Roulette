@@ -27,8 +27,7 @@ class BSRPlayer:
             self.name = "Dealer"
         if not self.human:
             self.ai_complexity = ai_complexity
-        elif self.ai_complexity is not None:
-            raise TypeError("Tried to define ai_complexity for a human player!")
+        self.ai_complexity = None
         # Set Placeholder Values for everything else
         self.inventory = []
         self.max_hp = None
@@ -43,9 +42,8 @@ class BSRPlayer:
         pass
 
 class BSRoulette:
-    def __init__(self, players: list[BSRPlayer]):
+    def __init__(self, players: list[BSRPlayer]=(BSRPlayer(),BSRPlayer(human=False))):
         self.players = players
-
         self.magazine = []
         self.active_player = 0
         self.round = 0
@@ -57,15 +55,19 @@ class BSRoulette:
         self.round += 1
         self.begin_magazine()
 
-    def begin_magazine(self):
-        # Refresh Players' items
-        [player.generate_items() for player in self.players]
-        # Reload the Magazine
+    @staticmethod
+    def generate_magazine():
         shell_count = randint(2,6)
         live_shells = randint(1, shell_count - 1)
         blank_shells = [False for _ in range(shell_count - live_shells)]
         live_shells  = [True  for _ in range(live_shells)]
-        self.magazine = blank_shells + live_shells
+        return blank_shells + live_shells
+
+    def begin_magazine(self):
+        # Refresh Players' items
+        [player.generate_items() for player in self.players]
+        # Reload the Magazine
+        self.magazine = self.generate_magazine()
         # Show it to the players unshuffled
         print(", ".join([f"Live" if shell else f"Blank" for shell in self.magazine]))
         # Then shuffle it
@@ -124,3 +126,9 @@ class BSRoulette:
                     f"Aliases: {BSRoulette.SHOOT_ALIASES}"
                     "Picks up the shotgun, once it has been picked up you must pick a target.\n"
                     "Targets can be 'self' or one of the players shown in 'listplayers'")
+
+def main():
+    game = BSRoulette()
+
+if __name__ == "__main__":
+    main()
