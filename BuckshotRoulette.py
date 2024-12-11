@@ -392,6 +392,8 @@ class BSRoulette:
 
     ADRENALINE_ALIASES = ("adrenaline", "injection", "steal", "take")
     def adrenaline(self, player: BSRPlayer, target, secondary_target, arguments) -> bool:
+        print("WARNING: Experimental item")
+        # TODO: Properly test and debug this function
         if target not in self.player_dict.keys():
             print("player not recognized")
             return False
