@@ -391,10 +391,19 @@ class BSRoulette:
         return True
 
     ADRENALINE_ALIASES = ("adrenaline", "injection", "steal", "take")
-    def adrenaline(self, player: BSRPlayer, target, secondary_target) -> bool:
+    def adrenaline(self, player: BSRPlayer, target, secondary_target, arguments) -> bool:
+        if target not in self.player_dict.keys():
+            print("player not recognized")
+            return False
+        target = self.player_dict[target]
+        if secondary_target not in chain.from_iterable(self.UNABRIDGED_ITEM_LIST): # Flattens to 1D array
+            return False
         if not self.update_inventory(player, self.ADRENALINE_ALIASES[0]):
             return False
-        raise NotImplemented
+        # TODO: Fix bugs with target player not having an item in their inventory
+        self.use_item(target, secondary_target + arguments)
+        return True
+
 
     USE_ALIASES = ("use", "item", "drink", "eat", "consume", "inject", "u")
     UNABRIDGED_ITEM_LIST = (PILLS_ALIASES, BEER_ALIASES, INVERTER_ALIASES, GLASSES_ALIASES, PHONE_ALIASES,
@@ -408,7 +417,9 @@ class BSRoulette:
         item = arguments[0]
         try: target = arguments[1]
         except IndexError: pass
-        try: secondary_target = "".join(arguments[2::])
+        try: secondary_target = arguments[2]
+        except IndexError: pass
+        try: arguments = arguments[3::]
         except IndexError: pass
         if item not in chain.from_iterable(self.UNABRIDGED_ITEM_LIST): # Flattens to 1D array
             print("item not recognized")
@@ -427,7 +438,7 @@ class BSRoulette:
         elif item in self.JAMMER_ALIASES:
             self.handcuff(player, target)
         elif item in self.ADRENALINE_ALIASES:
-            self.adrenaline(player, target, secondary_target)
+            self.adrenaline(player, target, secondary_target, arguments)
         return False
 
     # </editor-fold>
