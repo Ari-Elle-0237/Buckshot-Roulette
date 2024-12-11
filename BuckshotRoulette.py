@@ -22,7 +22,7 @@ import sys
 import time
 import os
 import copy
-import numpy
+# import numpy
 
 ORDINALS = {
     1: "first",
@@ -58,6 +58,7 @@ class BSRPlayer:
         self.wins = 0
         self.aliases = self.generate_aliases()
         self.jammed = False
+        self.cuffed = False
 
     def set_new_max_hp(self, value: int):
         self.max_hp = value
@@ -169,6 +170,10 @@ class BSRoulette:
         return blank_shells + live_shells
 
     def get_move(self, player: BSRPlayer):
+        if player.jammed or player.cuffed:
+            player.jammed = False
+            player.cuffed = False
+            return True
         if player.human:
             return self.move_ui(player)
         return self.get_ai_move(player.ai_complexity)
@@ -354,23 +359,46 @@ class BSRoulette:
               f"SHELL IS {"LIVE" if list(reversed(self.magazine))[shell_to_reveal - 1] else "BLANK"}")
         return True
 
+    SAW_ALIASES = ("saw", "sawed_off", "extra_damage", "cut")
+    def saw(self, player):
+        if not self.update_inventory(player, self.SAW_ALIASES[0]):
+            return False
+        self.sawed_off = True
+        return True
+
     JAMMER_ALIASES = ("jammer", "jam", "hack", "skip", "block")
-    def jammer(self, player: BSRPlayer) -> bool:
+    def jammer(self, player: BSRPlayer, target) -> bool:
         # TODO: Make sure this item only appears in multiplayer
-        raise NotImplemented
+        if target not in self.player_dict.keys():
+            print("player not recognized")
+            return False
+        if not self.update_inventory(player, self.JAMMER_ALIASES[0]):
+            return False
+        target = self.player_dict[target]
+        target.jammed = True
+        return True
 
     CUFFS_ALIASES = ("handcuffs", "handcuff","cuffs", "cuff", "jam", "skip", "block")
     def handcuff(self, player: BSRPlayer, target)-> bool:
         # TODO: Make sure this item only appears in singleplayer
-        raise NotImplemented
+        if target not in self.player_dict.keys():
+            print("player not recognized")
+            return False
+        if not self.update_inventory(player, self.CUFFS_ALIASES[0]):
+            return False
+        target = self.player_dict[target]
+        target.cuffed = True
+        return True
 
     ADRENALINE_ALIASES = ("adrenaline", "injection", "steal", "take")
     def adrenaline(self, player: BSRPlayer, target, secondary_target) -> bool:
+        if not self.update_inventory(player, self.ADRENALINE_ALIASES[0]):
+            return False
         raise NotImplemented
 
     USE_ALIASES = ("use", "item", "drink", "eat", "consume", "inject", "u")
     UNABRIDGED_ITEM_LIST = (PILLS_ALIASES, BEER_ALIASES, INVERTER_ALIASES, GLASSES_ALIASES, PHONE_ALIASES,
-                            CUFFS_ALIASES, JAMMER_ALIASES, ADRENALINE_ALIASES)
+                            CUFFS_ALIASES, JAMMER_ALIASES, ADRENALINE_ALIASES, SAW_ALIASES)
     ITEM_LIST = (item[0] for item in UNABRIDGED_ITEM_LIST)
     def use_item(self, player, arguments) -> False:
         if arguments is None:
