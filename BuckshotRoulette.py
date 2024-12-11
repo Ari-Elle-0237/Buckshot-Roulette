@@ -363,9 +363,15 @@ class BSRoulette:
     def handcuff(self, player: BSRPlayer, target)-> bool:
         # TODO: Make sure this item only appears in singleplayer
         raise NotImplemented
-        
+
+    ADRENALINE_ALIASES = ("adrenaline", "injection", "steal", "take")
+    def adrenaline(self, player: BSRPlayer, target, secondary_target) -> bool:
+        raise NotImplemented
+
     USE_ALIASES = ("use", "item", "drink", "eat", "consume", "inject", "u")
-    UNABRIDGED_ITEM_LIST = (PILLS_ALIASES, BEER_ALIASES, INVERTER_ALIASES, GLASSES_ALIASES, PHONE_ALIASES)
+    UNABRIDGED_ITEM_LIST = (PILLS_ALIASES, BEER_ALIASES, INVERTER_ALIASES, GLASSES_ALIASES, PHONE_ALIASES,
+                            CUFFS_ALIASES, JAMMER_ALIASES, ADRENALINE_ALIASES)
+    ITEM_LIST = (item[0] for item in UNABRIDGED_ITEM_LIST)
     def use_item(self, player, arguments) -> False:
         if arguments is None:
             print("Please Specify an Item")
@@ -388,6 +394,12 @@ class BSRoulette:
             self.magnifying_glass(player)
         elif item in self.PHONE_ALIASES:
             self.burner_phone(player)
+        elif item in self.CUFFS_ALIASES:
+            self.handcuff(player, target) # TODO: refactor to fix warn
+        elif item in self.JAMMER_ALIASES:
+            self.handcuff(player, target)
+        elif item in self.ADRENALINE_ALIASES:
+            self.adrenaline(player, target, secondary_target)
         return False
 
     # </editor-fold>
@@ -453,8 +465,8 @@ class BSRoulette:
 def main():
     game = BSRoulette([BSRPlayer(),BSRPlayer()])
     game.skip_embellishments = True
-    [game.players[0].inventory.append(item[0]) for item in BSRoulette.UNABRIDGED_ITEM_LIST]
-    [game.players[1].inventory.append(item[0]) for item in BSRoulette.UNABRIDGED_ITEM_LIST]
+    [game.players[0].inventory.append(item) for item in BSRoulette.ITEM_LIST]
+    [game.players[1].inventory.append(item) for item in BSRoulette.ITEM_LIST]
     game.begin()
 
 if __name__ == "__main__":
