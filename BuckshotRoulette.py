@@ -2,22 +2,37 @@
 Buckshot Roulette
 By Ariel Zepezauer (arielzepezauer@gmail.com)
 Created: 12/6/24
-Repository at:
-Description:
-An AI for playing Buckshot Roulette
+Repository at: https://github.com/Ari-Elle-0237/Buckshot-Roulette
+Description: Python version of Buckshot roulette built for designing my own AI to solve the game
 TODO list:
     - Finish Basic Terminal Version
     - Add item support
     - Refactor all print statements to use other methods
       for adaptability in moving beyond a basic terminal implementation
     - Eventually turn this into a discord bot
+    - Add Basic AI
+    - Add Solved AI
+    - Add custom rules/items
 """
+from itertools import chain
 import random
+from doctest import UnexpectedException # I Think I might be misusing this, pycharm added it for me
 from random import *
 import sys
 import time
 import os
 import copy
+import numpy
+
+ORDINALS = {
+    1: "first",
+    2: "second",
+    3: "third",
+    4: "fourth",
+    5: "fifth",
+    6: "sixth"
+}
+
 
 
 class BSRPlayer:
@@ -57,6 +72,7 @@ class BSRPlayer:
             f"{self.number}" if self.number else None,
             f"p{self.number}" if self.number else None,
             f"player{self.number}" if self.number else None,
+            f"player {self.number}" if self.number else None,
         ]
         self.aliases = [alias.casefold() for alias in aliases if alias]
         return self.aliases
@@ -65,7 +81,6 @@ class BSRPlayer:
         return (f"Player {self.number}{f" ({self.name})" if self.name else ""} "
                 f"[{"".join(["↯" if not self.jammed else " " for _ in range(self.hp)]) +
                     "".join([" " for _ in range(self.max_hp - self.hp)])}]")
-
 
 
 class BSRoulette:
@@ -161,6 +176,13 @@ class BSRoulette:
     def get_ai_move(self, complexity):
         pass
 
+    def update_player_aliases(self):
+        for player in self.players:
+            player.generate_aliases()
+        self.player_dict = {alias: player for player in self.players for alias in player.aliases}
+
+    # -----------------------------------------------------
+    # MOVE UI: CRUCIAL FOR COMMAND SECTION BELOW
     def move_ui(self, player):
         """
         UI loop for selecting a move for a human player
@@ -179,13 +201,14 @@ class BSRoulette:
                 return self.shoot(player)
             elif move in self.LISTPLAYERS_ALIASES:
                 print(self.list_players())
+            elif move in self.SHOWINV_ALIASES:
+                print(self.show_inventory(player, arguments))
+            elif move in self.USE_ALIASES:
+                return self.use_item(player, arguments)
+            elif move == "debug_show_magazine":
+                print(self.magazine)
             else:
-                print("Invalid Move (type 'help' for movelist:")
-
-    def update_player_aliases(self):
-        for player in self.players:
-            player.generate_aliases()
-        self.player_dict = {alias: player for player in self.players for alias in player.aliases}
+                print("Invalid Move (type 'help' for movelist):")
 
     # --------------------------------------------------------------
     # <editor-fold: commands>
@@ -260,17 +283,148 @@ class BSRoulette:
         self.living_players.remove(player)
     # </editor-fold>
 
+    # - - - - - - - - - - - - - - - - - - - -
+    # <editor-fold: use() and items>
+    # ALL ITEMS MUST HAVE:
+    # - AN ALIASES CONSTANT, ADDED TO UNABRIDGED ITEM LIST ABOVE use_item()
+    # - AN ELIF BLOCK IN use_item()
+    # - A PLAYER PARAM
+    # - A BOOL RETURN
+    # TODO: Review how to restructure this section as a subclass
+
+    class BSRItem:
+        def __init__(self):
+            pass
+
+    @staticmethod
+    def update_inventory(player: BSRPlayer, item) -> bool:
+        # Checks if an item is in a players inventory and then removes it if so
+        # Returns bool on whether it was successful
+        # TODO: Come up with a better name for this
+        if item in player.inventory:
+            player.inventory.remove(item)
+            return True
+        return False
+
+    PILLS_ALIASES = ("pills", "pill", "meth", "oxy", "perc", "painkillers", "stimulants", "cig")
+    def pills(self, player: BSRPlayer) -> bool:
+        """Restores 1 hp"""
+        if not self.update_inventory(player, self.PILLS_ALIASES[0]):
+            return False
+        if player not in self.living_players:
+            raise UnexpectedException("Dead Player Tried to Use an Item") # Idk why this error has multiple params
+        if player.hp + 1 <= player.max_hp:
+            player.hp += 1
+        return True
+
+    BEER_ALIASES = ("beer", "alcohol", "drink", "can")
+    def beer(self, player: BSRPlayer) -> bool:
+        """Racks the shotgun once"""
+        if not self.update_inventory(player, self.BEER_ALIASES[0]):
+            return False
+        print("Live" if self.magazine.pop() else "Blank")
+        return True
+
+    GLASSES_ALIASES = ("magnifying_glass", "glasses", "glass", "inspect")
+    def magnifying_glass(self, player: BSRPlayer) -> bool:
+        """Reveals the polarity of the shell in the chamber"""
+        if not self.update_inventory(player, self.GLASSES_ALIASES[0]):
+            return False
+        print("Live" if self.magazine[-1] else "Blank")
+        return True
+
+    INVERTER_ALIASES = ("inverter", "invert", "flip_shell", "flipper", "flipper_zero", "flip_shell")
+    def inverter(self, player: BSRPlayer) -> bool:
+        """Reverses the polarity of the shell in the chamber"""
+        if not self.update_inventory(player, self.INVERTER_ALIASES[0]):
+            return False
+        self.magazine[-1] ^= True
+        return True
+
+    PHONE_ALIASES = ("burner_phone", "phone", "call", "divine")
+    def burner_phone(self, player: BSRPlayer) -> bool:
+        """Reveals one of the shells in the magazine, following some logic"""
+        if not self.update_inventory(player, self.PHONE_ALIASES[0]):
+            return False
+        if len(self.magazine) == 2:
+            print("HOW UNFORTUNATE")
+            return True
+        shell_to_reveal = randint(2, len(self.magazine))
+        print(f"{ORDINALS[shell_to_reveal].upper()} "
+              f"SHELL IS {"LIVE" if list(reversed(self.magazine))[shell_to_reveal - 1] else "BLANK"}")
+        return True
+
+    JAMMER_ALIASES = ("jammer", "jam", "hack", "skip", "block")
+    def jammer(self, player: BSRPlayer) -> bool:
+        # TODO: Make sure this item only appears in multiplayer
+        raise NotImplemented
+
+    CUFFS_ALIASES = ("handcuffs", "handcuff","cuffs", "cuff", "jam", "skip", "block")
+    def handcuff(self, player: BSRPlayer, target)-> bool:
+        # TODO: Make sure this item only appears in singleplayer
+        raise NotImplemented
+        
+    USE_ALIASES = ("use", "item", "drink", "eat", "consume", "inject", "u")
+    UNABRIDGED_ITEM_LIST = (PILLS_ALIASES, BEER_ALIASES, INVERTER_ALIASES, GLASSES_ALIASES, PHONE_ALIASES)
+    def use_item(self, player, arguments) -> False:
+        if arguments is None:
+            print("Please Specify an Item")
+            print(self.show_inventory(player, None))
+            return False
+        item = arguments[0]
+        try: target = arguments[1]
+        except IndexError: pass
+        try: secondary_target = "".join(arguments[2::])
+        except IndexError: pass
+        if item not in chain.from_iterable(self.UNABRIDGED_ITEM_LIST): # Flattens to 1D array
+            print("item not recognized")
+        elif item in self.PILLS_ALIASES:
+            self.pills(player)
+        elif item in self.BEER_ALIASES:
+            self.beer(player)
+        elif item in self.INVERTER_ALIASES:
+            self.inverter(player)
+        elif item in self.GLASSES_ALIASES:
+            self.magnifying_glass(player)
+        elif item in self.PHONE_ALIASES:
+            self.burner_phone(player)
+        return False
+
+    # </editor-fold>
+    # - - - - - - - - - - - - - - - - - - - -
+
+    SHOWINV_ALIASES = ("inventory", "showinv", "showinventory", "items", "inv", "backpack", "i")
+    ALL_PLAYERS_ALIASES = ("all", "everyone")
+    def show_inventory(self, player, arguments=None):
+        # TODO: Refactor messages here into a constant to improve editability
+        self.update_player_aliases()
+        if type(arguments) == list:
+            arguments = "".join(arguments)
+        if arguments is None:
+            return f"Inventory: {", ".join([f"{item}" for item in player.inventory]) 
+                                                      if player.inventory else "Empty"}"
+        elif arguments in self.ALL_PLAYERS_ALIASES:
+            return "\n".join([f"{target} - Inventory: {", ".join([f"{item}" for item in target.inventory])
+                              if target.inventory else "Empty"}"
+                              for target in self.living_players])
+        elif arguments not in self.player_dict.keys():
+            return f"Player not recognized"
+        target = self.player_dict[arguments]
+        return f"{target} - Inventory: {", ".join([f"{item}" for item in target.inventory])
+                                                             if target.inventory else "Empty"}"
+
     LISTPLAYERS_ALIASES = ('listplayers', 'ls','lp', 'l','players','list')
     def list_players(self) -> str:
         # Update player aliases to be safe
         self.update_player_aliases()
         return "\n".join([f"{player}"
-                          f" - Aliases: {", ".join([f"'{alias}'" for alias in player.aliases])}"
+                          f"{f" | Items: {player.inventory}" if player.inventory else f""}"
+                          # f"\n - Aliases: {", ".join([f"'{alias}'" for alias in player.aliases])}"
                           for player in self.living_players])
 
     # <editor-fold: help() and help constants>
     HELP_ALIASES = ('help', 'h', '?')
-    UNABRIDGED_MOVE_LIST = (HELP_ALIASES, SHOOT_ALIASES, LISTPLAYERS_ALIASES)
+    UNABRIDGED_MOVE_LIST = (HELP_ALIASES, SHOOT_ALIASES, LISTPLAYERS_ALIASES, SHOWINV_ALIASES)
     MOVE_LIST = (move[0] for move in UNABRIDGED_MOVE_LIST)
     @staticmethod
     def help(arguments:list[str]|str=None):
@@ -299,6 +453,8 @@ class BSRoulette:
 def main():
     game = BSRoulette([BSRPlayer(),BSRPlayer()])
     game.skip_embellishments = True
+    [game.players[0].inventory.append(item[0]) for item in BSRoulette.UNABRIDGED_ITEM_LIST]
+    [game.players[1].inventory.append(item[0]) for item in BSRoulette.UNABRIDGED_ITEM_LIST]
     game.begin()
 
 if __name__ == "__main__":
